@@ -9,8 +9,6 @@
 #include <esp_idf_lib_helpers.h>
 #include <inttypes.h>
 
-// difference between the last project, enable the pulldown 
-
 #define ignitionLED 11
 #define engineLED 3
 #define ignitionEn 2
@@ -29,6 +27,21 @@ bool pSense = false;
 bool psbelt = false;
 static adc_oneshot_unit_handle_t oneShotHandler; 
 static adc_cali_handle_t adcWiperPotenHandle;  
+static hd44780_t lcd = {
+        .write_cb = NULL,
+        .font = HD44780_FONT_5X8,
+        .lines = 2,
+        .pins = {
+            .rs = GPIO_NUM_5,
+            .e  = GPIO_NUM_37,
+            .d4 = GPIO_NUM_36,
+            .d5 = GPIO_NUM_35,
+            .d6 = GPIO_NUM_48,
+            .d7 = GPIO_NUM_47,
+            .bl = HD44780_NOT_USED
+        }
+    };
+
 
 /**
  * Configures the adc conversions within our system
@@ -114,6 +127,7 @@ void pinConfig(void){
     gpio_reset_pin(passSeat);
     gpio_reset_pin(Alarm);
 
+
     gpio_set_direction(ignitionLED, GPIO_MODE_OUTPUT);
     gpio_set_direction(engineLED, GPIO_MODE_OUTPUT);
     gpio_set_direction(Alarm, GPIO_MODE_OUTPUT);
@@ -135,27 +149,47 @@ void pinConfig(void){
 
 }
 
-void lcd_test(void *pvParameters)
-{
-    hd44780_t lcd =
-    {
-        .write_cb = NULL,
-        .font = HD44780_FONT_5X8,
-        .lines = 2,
-        .pins = {
-            .rs = GPIO_NUM_5,
-            .e  = GPIO_NUM_37,
-            .d4 = GPIO_NUM_36,
-            .d5 = GPIO_NUM_35,
-            .d6 = GPIO_NUM_48,
-            .d7 = GPIO_NUM_47,
-            .bl = HD44780_NOT_USED
-        }
-    };
-    hd44780_gotoxy(&lcd, 0, 0);
-    hd44780_puts(&lcd, "\x08 Hello, World!");
+/**
+ * oneshot read for the potentiometer in our system
+ */
+
+int potentiometerRead(void){
+    int adcBitsPoten;
+    int adcMVPoten;
+    adc_oneshot_read(oneShotHandler, wiperPoten, &adcBitsPoten);
+    adc_cali_raw_to_voltage(adcWiperPotenHandle, adcBitsPoten, &adcMVPoten); 
+    return adcMVPoten;
 }
 
+/**
+ * defines a function that will return an integer corresponding to one of the headlight mode the user selects
+ * 0 = OFF,
+ * 1 = ON,
+ * 2 = AUTO
+ */
+int speedSelection(int adcMV){
+    if (adcMV <= 500){
+        return 0;
+    }
+    if (adcMV < 1500){
+        return 1;
+    }
+    else if (adcMV < 3000){
+        return 2;
+    }
+    else{
+        return 3;
+    }
+
+}
+/**
+ * initializes our LCD display
+ */
+void lcdINIT(void *pvParameters)
+{
+    ESP_ERROR_CHECK(hd44780_init(&lcd));
+    hd44780_gotoxy(&lcd, 0,0);
+}
 
 void app_main(void) {
     adcConfig();
@@ -163,10 +197,28 @@ void app_main(void) {
     bool initial_message = true;
     bool engineRunning = false;
     bool killEngine = false;
-    xTaskCreate(lcd_test, "lcd_test", configMINIMAL_STACK_SIZE * 3, NULL, 5, NULL);
+    lcdINIT(NULL);
     while(1){
         bool ignitEn = debounce(ignitionEn);
+        int wiperSpeed = speedSelection(potentiometerRead());
         bool ready = IgnitionReady();
+        if (wiperSpeed == 0){
+            hd44780_clear(&lcd);
+            hd44780_puts(&lcd, "WIPERS OFF");
+        }
+        if (wiperSpeed == 1){
+            hd44780_clear(&lcd);
+            hd44780_puts(&lcd, "WIPERS INTERMITTENT");
+        }
+        if (wiperSpeed == 2){
+            hd44780_clear(&lcd);
+            hd44780_puts(&lcd, "WIPERS LOW");
+        }
+        if (wiperSpeed == 3){
+            hd44780_clear(&lcd);
+            hd44780_puts(&lcd, "WIPERS HIGH");
+        }
+
         if (dSense && initial_message){
             printf("Welcome to enhanced Alarm system model 218 -W25\n");
             initial_message = false;
