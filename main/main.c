@@ -21,7 +21,7 @@
 #define Alarm 12
 #define adcAtten ADC_ATTEN_DB_12
 #define bitWidth ADC_BITWIDTH_12
-#define wiperPoten ADC_CHANNEL_6
+#define wiperPoten ADC_CHANNEL_3
 
 bool dSense = false;
 bool dsbelt = false;
@@ -29,7 +29,6 @@ bool pSense = false;
 bool psbelt = false;
 static adc_oneshot_unit_handle_t oneShotHandler; 
 static adc_cali_handle_t adcWiperPotenHandle;  
-
 
 /**
  * Configures the adc conversions within our system
@@ -43,35 +42,16 @@ void adcConfig(void){
         .atten = adcAtten,
         .bitwidth = bitWidth
     };
-    adc_oneshot_config_channel(oneShotHandler,  adcWiperPotenHandle, &config);
-        adc_cali_curve_fitting_config_t WiperPotenConfig = {
+    adc_oneshot_config_channel(oneShotHandler, wiperPoten, &config);
+        adc_cali_curve_fitting_config_t caliPotenConfig = {
         .unit_id = ADC_UNIT_1,
-        .chan =  adcWiperPotenHandle,
+        .chan = wiperPoten,
         .atten = adcAtten,
         .bitwidth = bitWidth
     };
-    adc_cali_create_scheme_curve_fitting(&WiperPotenConfig, &adcWiperPotenHandle);
+    adc_cali_create_scheme_curve_fitting(&caliPotenConfig, &adcWiperPotenHandle);
 }
-/**
- * configures the LCD display in our project
- */
-void wiperConfig(void *pvParameters){
-    hd44780_t lcd =
-    {
-        .write_cb = NULL,
-        .font = HD44780_FONT_5X8,
-        .lines = 2,
-        .pins = {
-            .rs = GPIO_NUM_38,
-            .e  = GPIO_NUM_37,
-            .d4 = GPIO_NUM_36,
-            .d5 = GPIO_NUM_35,
-            .d6 = GPIO_NUM_48,
-            .d7 = GPIO_NUM_47,
-            .bl = HD44780_NOT_USED
-        }
-    };
-}
+
 
 /**
  * Defines a debouncing function that will return the value of the button input after a delay of 25MS
@@ -155,14 +135,35 @@ void pinConfig(void){
 
 }
 
+void lcd_test(void *pvParameters)
+{
+    hd44780_t lcd =
+    {
+        .write_cb = NULL,
+        .font = HD44780_FONT_5X8,
+        .lines = 2,
+        .pins = {
+            .rs = GPIO_NUM_5,
+            .e  = GPIO_NUM_37,
+            .d4 = GPIO_NUM_36,
+            .d5 = GPIO_NUM_35,
+            .d6 = GPIO_NUM_48,
+            .d7 = GPIO_NUM_47,
+            .bl = HD44780_NOT_USED
+        }
+    };
+    hd44780_gotoxy(&lcd, 0, 0);
+    hd44780_puts(&lcd, "\x08 Hello, World!");
+}
+
 
 void app_main(void) {
     adcConfig();
     pinConfig();
-    wiperConfig(NULL);
     bool initial_message = true;
     bool engineRunning = false;
     bool killEngine = false;
+    xTaskCreate(lcd_test, "lcd_test", configMINIMAL_STACK_SIZE * 3, NULL, 5, NULL);
     while(1){
         bool ignitEn = debounce(ignitionEn);
         bool ready = IgnitionReady();
@@ -208,6 +209,8 @@ void app_main(void) {
                 if (!psbelt){
                     printf("Passenger seatbelt not fastened\n");
                 }
+                engineRunning = false;
+                killEngine = false;
                 vTaskDelay (2000/ portTICK_PERIOD_MS);
             }
         }
