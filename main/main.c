@@ -5,23 +5,73 @@
 #include <sdkconfig.h>
 #include <stdbool.h>
 #include "esp_adc/adc_oneshot.h"
+#include <hd44780.h>
+#include <esp_idf_lib_helpers.h>
+#include <inttypes.h>
 
 // difference between the last project, enable the pulldown 
 
-#define ignitionLED 3
-#define engineLED 11
+#define ignitionLED 11
+#define engineLED 3
 #define ignitionEn 2
 #define driverSeatBelt 42
 #define passSeatBelt 41
 #define driveSeat 40
 #define passSeat 39
 #define Alarm 12
+#define adcAtten ADC_ATTEN_DB_12
+#define bitWidth ADC_BITWIDTH_12
+#define wiperPoten ADC_CHANNEL_6
 
 bool dSense = false;
 bool dsbelt = false;
 bool pSense = false;
 bool psbelt = false;
-    
+static adc_oneshot_unit_handle_t oneShotHandler; 
+static adc_cali_handle_t adcWiperPotenHandle;  
+
+
+/**
+ * Configures the adc conversions within our system
+ */
+void adcConfig(void){
+    adc_oneshot_unit_init_cfg_t init_config1 = {
+        .unit_id = ADC_UNIT_1,
+    };
+    adc_oneshot_new_unit(&init_config1, &oneShotHandler);
+     adc_oneshot_chan_cfg_t config = {
+        .atten = adcAtten,
+        .bitwidth = bitWidth
+    };
+    adc_oneshot_config_channel(oneShotHandler,  adcWiperPotenHandle, &config);
+        adc_cali_curve_fitting_config_t WiperPotenConfig = {
+        .unit_id = ADC_UNIT_1,
+        .chan =  adcWiperPotenHandle,
+        .atten = adcAtten,
+        .bitwidth = bitWidth
+    };
+    adc_cali_create_scheme_curve_fitting(&WiperPotenConfig, &adcWiperPotenHandle);
+}
+/**
+ * configures the LCD display in our project
+ */
+void wiperConfig(void *pvParameters){
+    hd44780_t lcd =
+    {
+        .write_cb = NULL,
+        .font = HD44780_FONT_5X8,
+        .lines = 2,
+        .pins = {
+            .rs = GPIO_NUM_38,
+            .e  = GPIO_NUM_37,
+            .d4 = GPIO_NUM_36,
+            .d5 = GPIO_NUM_35,
+            .d6 = GPIO_NUM_48,
+            .d7 = GPIO_NUM_47,
+            .bl = HD44780_NOT_USED
+        }
+    };
+}
 
 /**
  * Defines a debouncing function that will return the value of the button input after a delay of 25MS
@@ -107,7 +157,9 @@ void pinConfig(void){
 
 
 void app_main(void) {
+    adcConfig();
     pinConfig();
+    wiperConfig(NULL);
     bool initial_message = true;
     bool engineRunning = false;
     bool killEngine = false;
