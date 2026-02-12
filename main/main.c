@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include "driver/ledc.h"
 
+
 #define ignitionLED 11
 #define engineLED 3
 #define ignitionEn 2
@@ -21,14 +22,16 @@
 #define adcAtten ADC_ATTEN_DB_12
 #define bitWidth ADC_BITWIDTH_12
 #define wiperPoten ADC_CHANNEL_3
+#define intermittentChan ADC_CHANNEL_3
 #define LEDC_TIMER LEDC_TIMER_0
 #define LEDC_MODE LEDC_LOW_SPEED_MODE
-#define LEDC_OUTPUT_IO (7)
+#define LEDC_OUTPUT_IO 7
 #define LEDC_CHANNEL LEDC_CHANNEL_0
 #define LEDC_DUTY_RES LEDC_TIMER_13_BIT
-#define LEDC_FREQUENCY (50)
+#define LEDC_FREQUENCY 50
 #define LEDC_DUTY_MIN 307
 #define LEDC_DUTY_MAX 944 
+
 
 bool dSense = false;
 bool dsbelt = false;
@@ -36,7 +39,8 @@ bool pSense = false;
 bool psbelt = false;
 static adc_oneshot_unit_handle_t oneShotHandler; 
 static adc_cali_handle_t adcWiperPotenHandle;  
-static hd44780_t lcd = {
+static adc_cali_handle_t intermittentHandle;
+static const hd44780_t lcd = {
         .write_cb = NULL,
         .font = HD44780_FONT_5X8,
         .lines = 2,
@@ -51,26 +55,26 @@ static hd44780_t lcd = {
         }
     };
 
+/*
+initalizes the PWM in our system
+*/
 static void example_ledc_init(void)
 {
-    // Prepare and then apply the LEDC PWM timer configuration
     ledc_timer_config_t ledc_timer = {
         .speed_mode       = LEDC_MODE,
         .duty_resolution  = LEDC_DUTY_RES,
         .timer_num        = LEDC_TIMER,
-        .freq_hz          = LEDC_FREQUENCY,  // Set output frequency at 50 Hz
+        .freq_hz          = LEDC_FREQUENCY, 
         .clk_cfg          = LEDC_AUTO_CLK
     };
     ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
-
-    // Prepare and then apply the LEDC PWM channel configuration
     ledc_channel_config_t ledc_channel = {
         .speed_mode     = LEDC_MODE,
         .channel        = LEDC_CHANNEL,
         .timer_sel      = LEDC_TIMER,
         .intr_type      = LEDC_INTR_DISABLE,
         .gpio_num       = LEDC_OUTPUT_IO,
-        .duty           = 0, // Set duty to 0%
+        .duty           = 0,
         .hpoint         = 0
     };
 ledc_channel_config(&ledc_channel);
@@ -84,11 +88,13 @@ void adcConfig(void){
     adc_oneshot_unit_init_cfg_t init_config1 = {
         .unit_id = ADC_UNIT_1,
     };
+
     adc_oneshot_new_unit(&init_config1, &oneShotHandler);
      adc_oneshot_chan_cfg_t config = {
         .atten = adcAtten,
         .bitwidth = bitWidth
     };
+
     adc_oneshot_config_channel(oneShotHandler, wiperPoten, &config);
         adc_cali_curve_fitting_config_t caliPotenConfig = {
         .unit_id = ADC_UNIT_1,
@@ -96,14 +102,21 @@ void adcConfig(void){
         .atten = adcAtten,
         .bitwidth = bitWidth
     };
+        adc_oneshot_config_channel(oneShotHandler, intermittentChan , &config);
+        adc_cali_curve_fitting_config_t caliPotenConfig2 = {
+        .unit_id = ADC_UNIT_1,
+        .chan = intermittentChan,
+        .atten = adcAtten,
+        .bitwidth = bitWidth
+    };
     adc_cali_create_scheme_curve_fitting(&caliPotenConfig, &adcWiperPotenHandle);
+    adc_cali_create_scheme_curve_fitting(&caliPotenConfig2, &intermittentHandle);
 }
 
 
 /**
  * Defines a debouncing function that will return the value of the button input after a delay of 25MS
  */
-
 bool debounce(int buttonInput){
     int button = gpio_get_level(buttonInput);
     vTaskDelay(25/ portTICK_PERIOD_MS);
@@ -161,7 +174,6 @@ void pinConfig(void){
     gpio_reset_pin(passSeat);
     gpio_reset_pin(Alarm);
 
-
     gpio_set_direction(ignitionLED, GPIO_MODE_OUTPUT);
     gpio_set_direction(engineLED, GPIO_MODE_OUTPUT);
     gpio_set_direction(Alarm, GPIO_MODE_OUTPUT);
@@ -184,22 +196,53 @@ void pinConfig(void){
 }
 
 /**
- * oneshot read for the potentiometer in our system
+ * oneshot read for the speed Potentiometer in our system 
+ * returns the value in milivolts 
  */
-
-int potentiometerRead(void){
+int wiperPotentiometerRead(void){
     int adcBitsPoten;
     int adcMVPoten;
     adc_oneshot_read(oneShotHandler, wiperPoten, &adcBitsPoten);
     adc_cali_raw_to_voltage(adcWiperPotenHandle, adcBitsPoten, &adcMVPoten); 
     return adcMVPoten;
 }
+/*
+reading for the intermittent mode in our system
+returns the value in milivolts
+*/
+int intermittentPotenRead(void){
+    int adcBitsPoten;
+    int adcMVPoten;
+    adc_oneshot_read(oneShotHandler, intermittentChan, &adcBitsPoten);
+    adc_cali_raw_to_voltage(adcWiperPotenHandle, adcBitsPoten, &adcMVPoten); 
+    return adcMVPoten;
+}
 
 /**
- * defines a function that will return an integer corresponding to one of the headlight mode the user selects
- * 0 = OFF,
- * 1 = ON,
- * 2 = AUTO
+ * defines a function that will allow the user to select a delay time in the intermittent mode
+ * 0 - short
+ * 1 - medium
+ * 2 - long
+ */
+int intermDelaySelection(int adcMV){
+if (adcMV < 1000){
+    return 0;
+}
+if (adcMV < 2000){
+    return 1;
+}
+else{
+    return 2;
+}
+}
+
+/**n
+ * defines a function that will return an integer corresponding to one of the wiper 
+ * speeed mode selection within our system
+ * 0 = off
+ * 1 = intermittent
+ * 2 = low
+ * 3 = high
  */
 int speedSelection(int adcMV){
     if (adcMV <= 500){
@@ -229,37 +272,40 @@ void app_main(void) {
     adcConfig();
     pinConfig();
     example_ledc_init();
-    bool initial_message = true;
+    bool initialMessage = true;
     bool engineRunning = false;
     bool killEngine = false;
+    int counter = 0;
     lcdINIT(NULL);
     while(1){
         bool ignitEn = debounce(ignitionEn);
-        int wiperSpeed = speedSelection(potentiometerRead());
+        int wiperSpeed = speedSelection(wiperPotentiometerRead());
+       // int interSelect = intermDelaySelection(intermittentPotenRead());
         bool ready = IgnitionReady();
         hd44780_clear(&lcd);
-        if (wiperSpeed == 0){
+        if (wiperSpeed == 0 && engineRunning){
             hd44780_clear(&lcd);
             hd44780_puts(&lcd, "WIPERS OFF");
         }
+
         if (wiperSpeed == 1 && engineRunning){
             hd44780_clear(&lcd);
+           // printf("%")
             hd44780_puts(&lcd, "WIPERS INTERMITTENT");
-            for (int i = 0; i <= 1800; i++){
-                if (i > 600 && i < 1200){
-                ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_MIN);
-                ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
+                if (counter < 13){
+                    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_MIN);
+                    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
                 }
-                if ( i >= 1200 && i < 1800){
-                ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_MAX);
-                ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
+                else if (counter >= 13 && counter < 26){
+                    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_MAX);
+                    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
                 }
-                if (i >= 1800){
-                    i = 0;
+                else if (counter >= 54){
+                    counter = 0;
                 }
-                vTaskDelay(25 / portTICK_PERIOD_MS);
-            }
+            counter++;
         }
+        
         if (wiperSpeed == 2 && engineRunning){
             hd44780_clear(&lcd);
             hd44780_puts(&lcd, "WIPERS LOW");
@@ -269,9 +315,9 @@ void app_main(void) {
             hd44780_puts(&lcd, "WIPERS HIGH");
         }
 
-        if (dSense && initial_message){
+        if (dSense && initialMessage){
             printf("Welcome to enhanced Alarm system model 218 -W25\n");
-            initial_message = false;
+            initialMessage = false;
         }
 
         if (ready && !engineRunning){
@@ -281,7 +327,6 @@ void app_main(void) {
     
 
         if(ignitEn){
-            vTaskDelay (25 / portTICK_PERIOD_MS);
             if (engineRunning){
             printf("engine stopping...\n");
             gpio_set_level(engineLED, 0);
