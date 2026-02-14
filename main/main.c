@@ -312,7 +312,7 @@ void app_main(void) {
             lastSelectionSpeed = wiperSpeed;
         }
 
-        if ((lastSelecInter != interSelect) && wiperSpeed == 1){
+        if ((lastSelecInter != interSelect) && wiperSpeed == 1 && engineRunning){
             ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_ZERO);
             ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
             hd44780_gotoxy(&lcd, 0, 1);
@@ -395,38 +395,6 @@ void app_main(void) {
         }
 
         }
-
-        /*
-        if (wiperSpeed == 2 && engineRunning){
-            if (counter < Threshold){
-                ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_MIN);
-                ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
-                }
-            else if (counter >= Threshold && counter < Threshold * 2){
-                ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_MAX);
-                ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
-                }
-            if (counter >= Threshold * 5){
-                    counter = 0;
-            }
-            counter++;
-        }
-
-        if (wiperSpeed == 3 && engineRunning){
-            if (counter < Threshold){
-                ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_MIN);
-                ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
-                }
-            else if (counter >= Threshold && counter < Threshold * 2){
-                ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, LEDC_DUTY_MAX);
-                ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
-                }
-            if (counter >= Threshold * 2){
-                    counter = 0;
-            }
-            counter++;
-        }
-        */
 
         if (dSense && initialMessage){
             printf("Welcome to enhanced Alarm system model 218 -W25\n");
