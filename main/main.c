@@ -54,7 +54,7 @@ static const hd44780_t lcd = {
     };
 
 /*
-initalizes the PWM in our system
+initalizes the PWM in our system returns void
 */
 static void example_ledc_init(void)
 {
@@ -80,7 +80,9 @@ ledc_channel_config(&ledc_channel);
 
 
 /**
- * Configures the adc conversions within our system
+ * Configures the adc conversions within our system by creating oneshot handlers, and calibration curves
+ * for two of the potentiometers in our system
+ * returns void
  */
 void adcConfig(void){
     adc_oneshot_unit_init_cfg_t init_config1 = {
@@ -160,6 +162,7 @@ bool IgnitionReady(void){
      * setting the direction to either input or output 
      * enabling pullup resistors within the ESP
      * And finally setting all of the output pins to zero
+     * returns void
      */
 
 void pinConfig(void){
@@ -195,7 +198,7 @@ void pinConfig(void){
 
 /**
  * oneshot read for the speed Potentiometer in our system 
- * returns the value in milivolts 
+ * returns the integer value in milivolts 
  */
 int wiperPotentiometerRead(void){
     int adcBitsPoten;
@@ -206,7 +209,7 @@ int wiperPotentiometerRead(void){
 }
 /*
 reading for the intermittent mode in our system
-returns the value in milivolts
+returns the integer value in milivolts
 */
 int intermittentPotenRead(void){
     int adcBitsPoten;
@@ -258,7 +261,8 @@ int speedSelection(int adcMV){
 
 }
 /**
- * initializes our LCD display
+ * initializes our LCD display and places the cursor at (0,0)
+ * returns void
  */
 void lcdINIT(void *pvParameters)
 {
@@ -411,13 +415,13 @@ void app_main(void) {
         if(ignitEn){
             vTaskDelay (25 / portTICK_PERIOD_MS);
             if (engineRunning){
-            printf("engine stopping...\n");
-            gpio_set_level(engineLED, 0);
-            engineRunning = false;
-            alarmOff = true;
-            lastSelectionSpeed = -1;
-            lastSelecInter = -1;
-            continue;
+                printf("engine stopping...\n");
+                gpio_set_level(engineLED, 0);
+                engineRunning = false;
+                alarmOff = true;
+                lastSelectionSpeed = -1;
+                lastSelecInter = -1;
+                continue;
             }
             if (ready) {
                 lastSelectionSpeed = -1;
